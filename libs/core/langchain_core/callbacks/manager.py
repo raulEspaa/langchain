@@ -2481,7 +2481,9 @@ def _configure(
     )
 
     tracer_v2 = tracing_v2_callback_var.get()
-    tracing_v2_enabled_ = _tracing_v2_is_enabled()
+    # `"local"` (from `tracing_context(enabled="local")`) must not attach the
+    # posting `LangChainTracer`; only upload when tracing is fully enabled.
+    tracing_v2_enabled_ = _tracing_v2_is_enabled() is True
 
     if v1_tracing_enabled_ and not tracing_v2_enabled_:
         # if both are enabled, can silently ignore the v1 tracer

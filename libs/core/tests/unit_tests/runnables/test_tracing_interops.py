@@ -17,7 +17,8 @@ from langsmith.utils import get_env_var
 from langchain_core.callbacks.base import BaseCallbackHandler
 from langchain_core.callbacks.manager import CallbackManager
 from langchain_core.runnables.base import RunnableLambda, RunnableParallel
-from langchain_core.tracers.langchain import LangChainTracer
+from langchain_core.tracers.context import _get_trace_callbacks
+from langchain_core.tracers.langchain import LangChainTracer, wait_for_all_tracers
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Callable, Coroutine, Generator, Mapping
@@ -80,6 +81,38 @@ def test_tracing_context() -> None:
     posts = _get_posts(mock_client_)
     assert len(posts) == 1
     assert all(post["session_name"] == project_name for post in posts)
+
+
+async def test_tracing_context_local_does_not_post() -> None:
+    """`enabled="local"` must keep LangChain runs local, like `@traceable` does."""
+    mock_session = MagicMock()
+    mock_client_ = Client(
+        session=mock_session, api_key="test", auto_batch_tracing=False
+    )
+
+    @RunnableLambda
+    def my_lambda(a: int) -> int:
+        return a + 1
+
+    @traceable
+    def my_traceable(a: int) -> int:
+        return my_lambda.invoke(a)
+
+    with tracing_context(client=mock_client_, enabled="local"):
+        assert my_lambda.invoke(1) == 2
+        assert await my_lambda.ainvoke(1) == 2
+        assert my_traceable(1) == 2
+
+    wait_for_all_tracers()
+    assert mock_session.request.mock_calls == []
+
+
+def test_get_trace_callbacks_local_does_not_attach_tracer() -> None:
+    with tracing_context(enabled="local"):
+        assert _get_trace_callbacks() is None
+        manager = CallbackManager(handlers=[])
+        assert _get_trace_callbacks(callback_manager=manager) is None
+        assert not any(isinstance(h, LangChainTracer) for h in manager.handlers)
 
 
 def test_inheritable_metadata_respects_explicit_metadata_with_tracing_context() -> None:

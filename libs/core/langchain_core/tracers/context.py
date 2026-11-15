@@ -117,7 +117,10 @@ def _get_trace_callbacks(
     *,
     address: AgentAddress | None = None,
 ) -> Callbacks:
-    if _tracing_v2_is_enabled():
+    # `tracing_context(enabled="local")` means "trace, but keep the data local".
+    # `LangChainTracer` posts to LangSmith, so only attach it when tracing is
+    # fully enabled, as `@traceable` does.
+    if _tracing_v2_is_enabled() is True:
         tracer = tracing_v2_callback_var.get() or LangChainTracer(
             example_id=example_id,
             **_get_tracer_kwargs(project_name, address=address),
